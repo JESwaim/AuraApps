@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+<LinearLayout
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Use Local LLM (MLC)" />
+
+    <Switch
+        android:id="@+id/switchMlc"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NSFW Block Threshold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <SeekBar
+            android:id="@+id/seekNsfw"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/txtNsfwVal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0.35" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/editImgRemoteUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Remote Image Gen URL" />
+
+    <Button
+        android:id="@+id/btnTestImgRemote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test Remote Image Gen" />
+
+    <ImageView
+        android:id="@+id/imgTestPreview"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="true" />
+
+    <TextView
+        android:id="@+id/txtImgTestStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp" />
+
+    <ProgressBar
+        android:id="@+id/progImgTest"
+        style="?android:attr/progressBarStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Model Downloads" />
+
+    <EditText
+        android:id="@+id/editUrlAesth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Aesthetics .tflite URL"/>
+
+    <Button
+        android:id="@+id/btnDownloadAesth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download Aesthetics" />
+
+    <EditText
+        android:id="@+id/editUrlNsfw"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="NSFW .tflite URL"/>
+
+    <Button
+        android:id="@+id/btnDownloadNsfw"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download NSFW" />
+
+    <EditText
+        android:id="@+id/editUrlEmbed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Embeddings ONNX URL"/>
+
+    <Button
+        android:id="@+id/btnDownloadEmbed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download Embeddings" />
+
+    <Button
+        android:id="@+id/btnClearMemory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clear RAG Memory" />
+</LinearLayout>
+</ScrollView>

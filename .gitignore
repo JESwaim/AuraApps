@@ -1,0 +1,13 @@
+.idea/
+.gradle/
+/local.properties
+/.settings/
+/build/
+*/build/
+.DS_Store
+*.iml
+captures/
+app/src/main/assets/models/**
+!app/src/main/assets/models/.gitkeep
+app/src/main/jniLibs/**
+!app/src/main/jniLibs/.gitkeep
