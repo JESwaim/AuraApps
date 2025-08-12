@@ -10,6 +10,8 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.jeswaim.apphub.guard.GuardService
 import com.jeswaim.apphub.llm.LlmBridge
+import com.jeswaim.apphub.modules.AiImageModule
+import com.jeswaim.apphub.modules.AiTutorModule
 import com.jeswaim.apphub.modules.HotOrNotModule
 import com.jeswaim.apphub.vision.VisionBridge
 
@@ -24,6 +26,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnVoice: Button
     private lateinit var btnHistory: Button
     private lateinit var btnSettings: Button
+    private lateinit var layoutAiImage: android.widget.LinearLayout
+    private lateinit var editImagePrompt: EditText
+    private lateinit var btnGenerate: Button
+    private lateinit var layoutAiTutor: android.widget.LinearLayout
+    private lateinit var editTutorQuestion: EditText
+    private lateinit var btnAsk: Button
+    private lateinit var txtTutorAnswer: TextView
+
 
     private var capturedPhotoPath: String? = null
 
@@ -40,6 +50,13 @@ class MainActivity : AppCompatActivity() {
         btnVoice = findViewById(R.id.btnVoice)
         btnHistory = findViewById(R.id.btnHistory)
         btnSettings = findViewById(R.id.btnSettings)
+        layoutAiImage = findViewById(R.id.layoutAiImage)
+        editImagePrompt = findViewById(R.id.editImagePrompt)
+        btnGenerate = findViewById(R.id.btnGenerate)
+        layoutAiTutor = findViewById(R.id.layoutAiTutor)
+        editTutorQuestion = findViewById(R.id.editTutorQuestion)
+        btnAsk = findViewById(R.id.btnAsk)
+        txtTutorAnswer = findViewById(R.id.txtTutorAnswer)
 
         val modules = listOf("Hot or Not", "AI Friend", "AI Image", "AI Tutor")
         spinnerModule.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, modules)
@@ -57,8 +74,38 @@ class MainActivity : AppCompatActivity() {
                     spinnerPersona.visibility = android.view.View.GONE
                     btnHistory.visibility = android.view.View.GONE
                 }
+
+                if (choice == "AI Image") {
+                    layoutAiImage.visibility = android.view.View.VISIBLE
+                } else {
+                    layoutAiImage.visibility = android.view.View.GONE
+                }
+
+                if (choice == "AI Tutor") {
+                    layoutAiTutor.visibility = android.view.View.VISIBLE
+                } else {
+                    layoutAiTutor.visibility = android.view.View.GONE
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        btnGenerate.setOnClickListener {
+            val prompt = editImagePrompt.text.toString()
+            if (prompt.isNotBlank()) {
+                runAiImage(prompt)
+            } else {
+                Toast.makeText(this, "Please enter a prompt", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnAsk.setOnClickListener {
+            val question = editTutorQuestion.text.toString()
+            if (question.isNotBlank()) {
+                runAiTutor(question)
+            } else {
+                Toast.makeText(this, "Please enter a question", Toast.LENGTH_SHORT).show()
+            }
         }
 
         findViewById<Button>(R.id.btnPick).setOnClickListener {
@@ -119,6 +166,39 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 progressBar.visibility = android.view.View.GONE
                 txtResult.text = "Score: ${result.score}/10\n\n${result.commentary}"
+            }
+        }.start()
+    }
+
+    private fun runAiImage(prompt: String) {
+        progressBar.visibility = android.view.View.VISIBLE
+        txtResult.text = ""
+        Thread {
+            val aiImageModule = AiImageModule(this)
+            val bitmap = aiImageModule.generateImage(prompt)
+            aiImageModule.close()
+            runOnUiThread {
+                progressBar.visibility = android.view.View.GONE
+                if (bitmap != null) {
+                    imageView.setImageBitmap(bitmap)
+                } else {
+                    txtResult.text = "Failed to generate image"
+                }
+            }
+        }.start()
+    }
+
+    private fun runAiTutor(question: String) {
+        progressBar.visibility = android.view.View.VISIBLE
+        txtTutorAnswer.text = ""
+        Thread {
+            val llmBridge = LlmBridge(this)
+            val aiTutorModule = AiTutorModule(llmBridge)
+            val answer = aiTutorModule.answer(question)
+            llmBridge.unload()
+            runOnUiThread {
+                progressBar.visibility = android.view.View.GONE
+                txtTutorAnswer.text = answer
             }
         }.start()
     }
