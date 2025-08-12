@@ -116,6 +116,18 @@
         android:layout_height="wrap_content"
         android:text="Download Embeddings" />
 
+    <EditText
+        android:id="@+id/editUrlSd"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Stable Diffusion ONNX .zip URL"/>
+
+    <Button
+        android:id="@+id/btnDownloadSd"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download Stable Diffusion" />
+
     <Button
         android:id="@+id/btnClearMemory"
         android:layout_width="match_parent"

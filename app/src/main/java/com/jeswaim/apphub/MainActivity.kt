@@ -53,6 +53,10 @@ class MainActivity : AppCompatActivity() {
                 if (choice == "AI Friend") {
                     spinnerPersona.visibility = android.view.View.VISIBLE
                     btnHistory.visibility = android.view.View.VISIBLE
+                } else if (choice == "AI Image") {
+                    spinnerPersona.visibility = android.view.View.GONE
+                    btnHistory.visibility = android.view.View.GONE
+                    startActivity(Intent(this@MainActivity, ImageGenActivity::class.java))
                 } else {
                     spinnerPersona.visibility = android.view.View.GONE
                     btnHistory.visibility = android.view.View.GONE
