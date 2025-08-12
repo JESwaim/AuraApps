@@ -25,9 +25,11 @@ class SettingsActivity : AppCompatActivity() {
         val editUrlAesth = findViewById<EditText>(R.id.editUrlAesth)
         val editUrlNsfw = findViewById<EditText>(R.id.editUrlNsfw)
         val editUrlEmbed = findViewById<EditText>(R.id.editUrlEmbed)
+        val editUrlSd = findViewById<EditText>(R.id.editUrlSd)
         val btnDownloadAesth = findViewById<Button>(R.id.btnDownloadAesth)
         val btnDownloadNsfw = findViewById<Button>(R.id.btnDownloadNsfw)
         val btnDownloadEmbed = findViewById<Button>(R.id.btnDownloadEmbed)
+        val btnDownloadSd = findViewById<Button>(R.id.btnDownloadSd)
         val btnClearMem = findViewById<Button>(R.id.btnClearMemory)
 
         switchMlc.isChecked = prefs.getBoolean("use_mlc", false)
@@ -76,9 +78,14 @@ class SettingsActivity : AppCompatActivity() {
             }.start()
         }
 
-        fun enqueue(url: String, filename: String, subdir: String) {
+        fun enqueue(url: String, filename: String, subdir: String, unzip: Boolean = false) {
             if (url.isBlank()) { Toast.makeText(this, "Enter a URL", Toast.LENGTH_SHORT).show(); return }
-            val data = Data.Builder().putString("url", url).putString("filename", filename).putString("subdir", subdir).build()
+            val data = Data.Builder()
+                .putString("url", url)
+                .putString("filename", filename)
+                .putString("subdir", subdir)
+                .putBoolean("unzip", unzip)
+                .build()
             val req = OneTimeWorkRequestBuilder<com.jeswaim.apphub.models.ModelDownloadWorker>().setInputData(data).build()
             WorkManager.getInstance(this).enqueue(req)
             Toast.makeText(this, "Download started", Toast.LENGTH_SHORT).show()
@@ -87,6 +94,7 @@ class SettingsActivity : AppCompatActivity() {
         btnDownloadAesth.setOnClickListener { enqueue(editUrlAesth.text.toString(), "aesthetic.tflite", "aesthetic") }
         btnDownloadNsfw.setOnClickListener { enqueue(editUrlNsfw.text.toString(), "nsfw.tflite", "nsfw") }
         btnDownloadEmbed.setOnClickListener { enqueue(editUrlEmbed.text.toString(), "model.onnx", "embeddings") }
+        btnDownloadSd.setOnClickListener { enqueue(editUrlSd.text.toString(), "sd_models.zip", "sd", unzip = true) }
 
         btnClearMem.setOnClickListener {
             getSharedPreferences("chat_history", MODE_PRIVATE).edit().clear().apply()
