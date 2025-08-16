@@ -136,12 +136,74 @@ class CloudBackupManagerImpl private constructor() : CloudBackupManager {
     }
     
     override suspend fun restoreFromBackup(context: Context, backupId: String?): CloudBackupManager.RestoreResult = withContext(Dispatchers.IO) {
-        // TODO: Implement restore functionality
-        // This is a placeholder implementation
-        CloudBackupManager.RestoreResult(
-            success = false,
-            message = "Restore functionality not yet implemented"
-        )
+        try {
+            val config = getConfig(context) ?: return@withContext CloudBackupManager.RestoreResult(
+                success = false,
+                message = "Backup not configured"
+            )
+            
+            // Ensure provider is initialized
+            if (currentProvider == null) {
+                currentProvider = createProviderAdapter(config.provider)
+                if (currentProvider?.initialize(context) != true) {
+                    return@withContext CloudBackupManager.RestoreResult(
+                        success = false,
+                        message = "Failed to initialize backup provider"
+                    )
+                }
+            }
+            
+            // Get backup ID if not specified (use latest)
+            val targetBackupId = backupId ?: run {
+                val backups = currentProvider?.listBackups(context) ?: emptyList()
+                backups.maxByOrNull { it.timestamp }?.id
+            } ?: return@withContext CloudBackupManager.RestoreResult(
+                success = false,
+                message = "No backups found"
+            )
+            
+            // Download backup data
+            val encryptedData = currentProvider?.downloadBackup(context, targetBackupId)
+                ?: return@withContext CloudBackupManager.RestoreResult(
+                    success = false,
+                    message = "Failed to download backup"
+                )
+            
+            // Decrypt if needed
+            val backupData = if (config.encryptionEnabled) {
+                val encrypted = BackupEncryption.deserializeEncryptedData(String(encryptedData))
+                    ?: return@withContext CloudBackupManager.RestoreResult(
+                        success = false,
+                        message = "Failed to deserialize encrypted backup"
+                    )
+                BackupEncryption.decryptBackupData(context, encrypted)
+                    ?: return@withContext CloudBackupManager.RestoreResult(
+                        success = false,
+                        message = "Failed to decrypt backup data"
+                    )
+            } else {
+                encryptedData
+            }
+            
+            // TODO: Implement actual restore logic
+            // This would involve:
+            // 1. Parse backup JSON
+            // 2. Restore SharedPreferences
+            // 3. Restore ChatStore data
+            // 4. Restore app-specific data
+            // 5. Verify restoration
+            
+            CloudBackupManager.RestoreResult(
+                success = false,
+                message = "Restore functionality not yet implemented - backup data downloaded successfully"
+            )
+            
+        } catch (e: Exception) {
+            CloudBackupManager.RestoreResult(
+                success = false,
+                message = "Restore failed: ${e.message ?: "Unknown error"}"
+            )
+        }
     }
     
     override suspend fun listBackups(context: Context): List<BackupInfo> = withContext(Dispatchers.IO) {
@@ -224,14 +286,33 @@ class CloudBackupManagerImpl private constructor() : CloudBackupManager {
             lastBackup + (config.backupFrequencyHours * 60 * 60 * 1000L)
         } else null
         
+        // Check if backup is currently running
+        val isBackupInProgress = BackupScheduler.isBackupRunning(context)
+        
+        // Parse last backup result
+        val lastBackupResult = try {
+            val resultJson = prefs.getString("last_backup_result", null)
+            if (resultJson != null) {
+                val json = JSONObject(resultJson)
+                CloudBackupManager.BackupResult(
+                    success = json.getBoolean("success"),
+                    message = json.getString("message"),
+                    backupId = json.getString("backup_id").takeIf { it.isNotBlank() },
+                    timestamp = json.getLong("timestamp")
+                )
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+        
         return BackupStatus(
             isConfigured = isConfigured,
             lastBackupTimestamp = if (lastBackup > 0) lastBackup else null,
             nextScheduledBackup = nextScheduled,
-            isBackupInProgress = false, // TODO: Track backup progress
-            lastBackupResult = null, // TODO: Load last result from preferences
-            availableBackups = 0, // TODO: Cache backup count
-            totalBackupSize = 0L // TODO: Calculate total backup size
+            isBackupInProgress = isBackupInProgress,
+            lastBackupResult = lastBackupResult,
+            availableBackups = 0, // TODO: Cache backup count from provider
+            totalBackupSize = 0L // TODO: Calculate total backup size from provider
         )
     }
     

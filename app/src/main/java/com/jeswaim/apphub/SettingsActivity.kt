@@ -219,7 +219,7 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     /**
-     * Update backup status display
+     * Update backup status display with detailed information
      */
     private fun updateBackupStatus(txtBackupStatus: TextView) {
         val backupManager = CloudBackupManagerImpl.getInstance()
@@ -227,6 +227,17 @@ class SettingsActivity : AppCompatActivity() {
         
         val statusText = when {
             !status.isConfigured -> "Status: Not configured"
+            status.isBackupInProgress -> "Status: Backup in progress..."
+            status.lastBackupResult != null -> {
+                val result = status.lastBackupResult
+                val lastBackup = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.US)
+                    .format(java.util.Date(result.timestamp))
+                if (result.success) {
+                    "Last backup: $lastBackup ✓"
+                } else {
+                    "Last backup failed: $lastBackup (${result.message})"
+                }
+            }
             status.lastBackupTimestamp != null -> {
                 val lastBackup = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.US)
                     .format(java.util.Date(status.lastBackupTimestamp))
@@ -236,6 +247,11 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         txtBackupStatus.text = statusText
+        
+        // Update button states
+        val btnManualBackup = findViewById<Button>(R.id.btnManualBackup)
+        btnManualBackup.isEnabled = !status.isBackupInProgress && status.isConfigured
+        btnManualBackup.text = if (status.isBackupInProgress) "Backing up..." else "Backup Now"
     }
     
     /**
