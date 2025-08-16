@@ -1,0 +1,324 @@
+name: Setup Repo (labels, milestones, project, issues)
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_labels:
+        description: "Create/update standard labels"
+        type: boolean
+        default: true
+      create_milestones:
+        description: "Create/update milestones"
+        type: boolean
+        default: true
+      create_project:
+        description: "Create 'AuraApps Roadmap' project if missing"
+        type: boolean
+        default: true
+      add_issues_from_docs:
+        description: "Create issues from docs/issues/*.md and add to project"
+        type: boolean
+        default: true
+      delete_branches:
+        description: "Delete redundant remote branches listed below"
+        type: boolean
+        default: false
+      branches_to_delete:
+        description: "Branches to delete (one per line)"
+        type: string
+        default: |
+          chore/project-plan-and-issues
+          feat/project-planning-files
+          feat/ai-image-module
+          feature/complete-base-app
+      project_owner_login:
+        description: "Owner login for the Projects v2 board (user or org). Default is repo owner."
+        type: string
+        default: ""
+      project_title:
+        description: "Project title"
+        type: string
+        default: "AuraApps Roadmap"
+      project_status_option_for_new_issues:
+        description: "Status option to set for new issue items"
+        type: string
+        default: "Todo"
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  projects: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      REPO_OWNER: ${{ github.repository_owner }}
+      OWNER_LOGIN: ${{ inputs.project_owner_login != '' && inputs.project_owner_login || github.repository_owner }}
+      PROJECT_TITLE: ${{ inputs.project_title }}
+      STATUS_NAME: ${{ inputs.project_status_option_for_new_issues }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Create/update labels
+        if: ${{ inputs.create_labels }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          labels=(
+            "area:llm|0e8a16|LLM work"
+            "area:vision|0e8a16|Computer vision"
+            "area:platform|0e8a16|Platform / infra"
+            "area:safety|0e8a16|Safety & guardrails"
+            "area:ux|5319e7|User experience"
+            "area:docs|5319e7|Documentation"
+            "area:billing|1d76db|Billing & payments"
+            "area:testing|fbca04|Testing"
+            "type:feature|1d76db|New feature"
+            "type:bug|d73a4a|Bug"
+            "type:enhancement|a2eeef|Enhancement"
+            "type:chore|cfd3d7|Maintenance"
+            "prio:critical|b60205|Critical priority"
+            "prio:high|d93f0b|High priority"
+            "prio:medium|fbca04|Medium priority"
+            "prio:low|0e8a16|Low priority"
+          )
+          for spec in "${labels[@]}"; do
+            name="${spec%%|*}"; rest="${spec#*|}"
+            color="${rest%%|*}"; desc="${rest#*|}"
+            url_name="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$name")"
+            # Check if label exists
+            if curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/$REPO/labels/$url_name" >/dev/null; then
+              # Update to ensure color/description
+              curl -fsS -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+                   -H "Accept: application/vnd.github+json" \
+                   -d "$(jq -n --arg n "$name" --arg c "$color" --arg d "$desc" '{name:$n,color:$c,description:$d}')" \
+                   "https://api.github.com/repos/$REPO/labels/$url_name" >/dev/null
+              echo "Updated label: $name"
+            else
+              # Create
+              curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+                   -H "Accept: application/vnd.github+json" \
+                   -d "$(jq -n --arg n "$name" --arg c "$color" --arg d "$desc" '{name:$n,color:$c,description:$d}')" \
+                   "https://api.github.com/repos/$REPO/labels" >/dev/null
+              echo "Created label: $name"
+            fi
+          done
+
+      - name: Create/update milestones
+        if: ${{ inputs.create_milestones }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          milestones=(
+            "v0.1: MVP|MVP scope"
+            "v0.2: On-device Models|On-device models work"
+            "v0.3: Platform Polish|Polish and DX"
+            "v0.4: Safety + UX|Safety and UX improvements"
+          )
+          existing=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/milestones?state=all&per_page=100")
+          for spec in "${milestones[@]}"; do
+            title="${spec%%|*}"; desc="${spec#*|}"
+            id=$(jq -r --arg t "$title" '.[] | select(.title==$t) | .number' <<<"$existing" || true)
+            if [[ -n "${id:-}" && "$id" != "null" ]]; then
+              curl -fsS -X PATCH -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                   -d "$(jq -n --arg d "$desc" '{description:$d}')" \
+                   "https://api.github.com/repos/$REPO/milestones/$id" >/dev/null
+              echo "Updated milestone: $title"
+            else
+              curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                   -d "$(jq -n --arg t "$title" --arg d "$desc" '{title:$t, description:$d}')" \
+                   "https://api.github.com/repos/$REPO/milestones" >/dev/null
+              echo "Created milestone: $title"
+            fi
+          done
+
+      - name: Ensure project exists and capture IDs (Projects v2)
+        id: project
+        if: ${{ inputs.create_project || inputs.add_issues_from_docs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          read -r -d '' QRY <<'GRAPHQL'
+          query($login: String!, $title: String!) {
+            user(login: $login) {
+              id
+              projectsV2(first: 100, query: $title) {
+                nodes { id title }
+              }
+            }
+            organization(login: $login) {
+              id
+              projectsV2(first: 100, query: $title) {
+                nodes { id title }
+              }
+            }
+          }
+          GRAPHQL
+
+          data=$(jq -n --arg login "$OWNER_LOGIN" --arg title "$PROJECT_TITLE" '{login:$login, title:$title}')
+          resp=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                 -d "$(jq -c '{query:$query, variables:$vars}' --arg query "$QRY" --argjson vars "$data" <<< "{}")" \
+                 https://api.github.com/graphql)
+
+          owner_id=$(jq -r '.data.user.id // .data.organization.id' <<<"$resp")
+          project_id=$(jq -r '.data.user.projectsV2.nodes[]?, .data.organization.projectsV2.nodes[]? | select(.title=="'"$PROJECT_TITLE"'") | .id' <<<"$resp" | head -n1)
+
+          if [[ -z "$owner_id" || "$owner_id" == "null" ]]; then
+            echo "Owner $OWNER_LOGIN not found (user or org)"; exit 1
+          fi
+
+          if [[ -z "$project_id" || "$project_id" == "null" ]]; then
+            # Create project
+            read -r -d '' MUT <<'GRAPHQL'
+            mutation($owner:ID!, $title:String!) {
+              createProjectV2(input:{ownerId:$owner, title:$title}) {
+                projectV2 { id title }
+              }
+            }
+            GRAPHQL
+            payload=$(jq -n --arg owner "$owner_id" --arg title "$PROJECT_TITLE" \
+              '{query:$q, variables:{owner:$owner, title:$title}}' --arg q "$MUT")
+            cresp=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                     -d "$payload" https://api.github.com/graphql)
+            project_id=$(jq -r '.data.createProjectV2.projectV2.id' <<<"$cresp")
+            echo "Created project: $PROJECT_TITLE"
+          else
+            echo "Using existing project: $PROJECT_TITLE"
+          fi
+
+          # Get Status field and the desired option id
+          read -r -d '' FQ <<'GRAPHQL'
+          query($pid:ID!) {
+            node(id:$pid) {
+              ... on ProjectV2 {
+                fields(first: 50) {
+                  nodes {
+                    ... on ProjectV2SingleSelectField {
+                      id
+                      name
+                      options { id name }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          GRAPHQL
+          presp=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                    -d "$(jq -n --arg q "$FQ" --argjson v "$(jq -n --arg pid "$project_id" '{pid:$pid}' --arg pid "$project_id")" '{query:$q, variables:$v}')" \
+                    https://api.github.com/graphql)
+
+          status_field_id=$(jq -r '.data.node.fields.nodes[]? | select(.name=="Status") | .id' <<<"$presp" | head -n1)
+          status_option_id=$(jq -r '.data.node.fields.nodes[]? | select(.name=="Status") | .options[]? | select(.name=="'"$STATUS_NAME"'") | .id' <<<"$presp" | head -n1)
+
+          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+          echo "status_field_id=${status_field_id:-}" >> "$GITHUB_OUTPUT"
+          echo "status_option_id=${status_option_id:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Create issues from docs/issues and add to project
+        if: ${{ inputs.add_issues_from_docs }}
+        shell: bash
+        env:
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          STATUS_FIELD_ID: ${{ steps.project.outputs.status_field_id }}
+          STATUS_OPTION_ID: ${{ steps.project.outputs.status_option_id }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(docs/issues/*.md)
+          if (( ${#files[@]} == 0 )); then
+            echo "No issue seed files found under docs/issues/"
+            exit 0
+          fi
+
+          # Map to avoid duplicates when re-running
+          existing_titles=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues?state=open&per_page=100" | jq -r '.[].title')
+
+          for f in "${files[@]}"; do
+            first="#"
+            title=$(head -n 1 "$f" | sed -E 's/^# *//')
+            if [[ -z "$title" || "$title" == "$first"* ]]; then
+              base="$(basename "$f")"
+              title="${base%.*}"
+            fi
+
+            # Skip if an open issue already has this title
+            if grep -Fxq "$title" <<< "$existing_titles"; then
+              echo "Skipping existing issue: $title"
+              continue
+            fi
+
+            body=$(jq -Rs . < "$f")
+            payload=$(jq -cn --arg t "$title" --argjson b "$body" '{title:$t, body:$b}')
+            resp=$(curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+                         -H "Accept: application/vnd.github+json" \
+                         -H "Content-Type: application/json" \
+                         -d "$payload" "https://api.github.com/repos/$REPO/issues")
+            issue_number=$(jq -r '.number' <<<"$resp")
+            issue_node=$(jq -r '.node_id' <<<"$resp")
+            echo "Created issue #$issue_number - $title"
+
+            # Add to project if a project was resolved
+            if [[ -n "${PROJECT_ID:-}" && "$PROJECT_ID" != "null" ]]; then
+              read -r -d '' ADD_ITEM <<'GRAPHQL'
+              mutation($pid:ID!, $cid:ID!) {
+                addProjectV2ItemById(input:{projectId:$pid, contentId:$cid}) {
+                  item { id }
+                }
+              }
+              GRAPHQL
+              add_payload=$(jq -cn --arg pid "$PROJECT_ID" --arg cid "$issue_node" '{query:$q, variables:{pid:$pid, cid:$cid}}' --arg q "$ADD_ITEM")
+              add_resp=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                               -d "$add_payload" https://api.github.com/graphql)
+              item_id=$(jq -r '.data.addProjectV2ItemById.item.id' <<<"$add_resp" 2>/dev/null || true)
+
+              # Set Status=Todo if we discovered the field+option
+              if [[ -n "${item_id:-}" && -n "${STATUS_FIELD_ID:-}" && -n "${STATUS_OPTION_ID:-}" ]]; then
+                read -r -d '' SET_STATUS <<'GRAPHQL'
+                mutation($pid:ID!, $iid:ID!, $fid:ID!, $oid:ID!) {
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$pid,
+                    itemId:$iid,
+                    fieldId:$fid,
+                    value:{ singleSelectOptionId:$oid }
+                  }) { projectV2Item { id } }
+                }
+                GRAPHQL
+                status_payload=$(jq -cn \
+                  --arg pid "$PROJECT_ID" \
+                  --arg iid "$item_id" \
+                  --arg fid "$STATUS_FIELD_ID" \
+                  --arg oid "$STATUS_OPTION_ID" \
+                  '{query:$q, variables:{pid:$pid, iid:$iid, fid:$fid, oid:$oid}}' --arg q "$SET_STATUS")
+                curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                     -d "$status_payload" https://api.github.com/graphql >/dev/null || true
+              fi
+            fi
+          done
+
+      - name: Delete listed branches (optional)
+        if: ${{ inputs.delete_branches }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r branch; do
+            [[ -z "$branch" ]] && continue
+            echo "Deleting remote branch: $branch"
+            curl -s -o /dev/null -w "%{http_code}\n" \
+              -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/git/refs/heads/$branch" | \
+              { read code; if [[ "$code" == "204" ]]; then echo "Deleted $branch"; else echo "Skip/failed ($code): $branch"; fi; }
+          done <<< "${{ inputs.branches_to_delete }}"
