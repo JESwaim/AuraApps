@@ -7,7 +7,19 @@
 .DS_Store
 *.iml
 captures/
+
+# Model and library artifacts
 app/src/main/assets/models/**
 !app/src/main/assets/models/.gitkeep
 app/src/main/jniLibs/**
 !app/src/main/jniLibs/.gitkeep
+
+# Security: Keystore files and signing configs
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Sensitive configuration files
+app/google-services.json
+app/firebase-config.json
